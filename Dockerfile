@@ -33,6 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git reset --hard ${A1111_RELEASE} && \
     mkdir -p repositories/stable-diffusion-stability-ai && \
     git clone https://github.com/joypaul162/Stability-AI-stablediffusion.git repositories/stable-diffusion-stability-ai && \
+    sed -i 's/git_clone(stable_diffusion_repo,/# git_clone(stable_diffusion_repo,/g' modules/launch_utils.py && \
     pip install xformers && \
     pip install -r requirements_versions.txt && \
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
