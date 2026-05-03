@@ -10,6 +10,14 @@ MODELS_ROOT="/stable-diffusion-webui/models"
 SD_MODEL_DEST="$VOLUME_PATH/models/Stable-diffusion/model.safetensors"
 CODEFORMER_DIR="$VOLUME_PATH/models/Codeformer"
 GFPGAN_DIR="$VOLUME_PATH/models/GFPGAN"
+ADETAILER_MODEL_DIR="$VOLUME_PATH/models/adetailer"
+VAE_DEST="$VOLUME_PATH/models/VAE/vae-ft-mse-840000-ema-pruned.safetensors"
+
+# curl が入っていなければインストールする
+if ! command -v curl &> /dev/null; then
+    echo "curl not found. Installing..."
+    apt-get update && apt-get install -y curl jq
+fi
 
 if [ -d "$VOLUME_PATH" ]; then
     echo "Network Volume found. Synchronizing models..."
@@ -18,6 +26,8 @@ if [ -d "$VOLUME_PATH" ]; then
     mkdir -p "$VOLUME_PATH/models/Stable-diffusion"
     mkdir -p "$CODEFORMER_DIR"
     mkdir -p "$GFPGAN_DIR"
+    mkdir -p "$ADETAILER_MODEL_DIR"
+    mkdir -p "$VOLUME_PATH/models/VAE"
 
     # --- 2. 存在チェック & ダウンロード（初回のみ） ---
     # メインモデル
@@ -38,11 +48,25 @@ if [ -d "$VOLUME_PATH" ]; then
         wget -q -O "$GFPGAN_DIR/detection_Resnet50_Final.pth" "https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_Resnet50_Final.pth"
     fi
 
+    # 顔用モデルのダウンロード
+    if [ ! -f "$ADETAILER_MODEL_DIR/face_yolov8n.pt" ]; then
+        echo "Downloading ADetailer Face model..."
+        wget -q -O "$ADETAILER_MODEL_DIR/face_yolov8n.pt" "https://huggingface.co/Bingsu/adetailer/resolve/main/face_yolov8n.pt"
+    fi
+
+    # VAE
+    if [ ! -f "$VAE_DEST" ]; then
+        echo "Downloading VAE to Volume..."
+        wget -q -O "$VAE_DEST" "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+    fi
+
     # --- 3. シンボリックリンクの構築 ---
     # イメージ側のデフォルトディレクトリを消して、ボリュームへ繋ぐ
     rm -rf "$MODELS_ROOT/Stable-diffusion" && ln -s "$VOLUME_PATH/models/Stable-diffusion" "$MODELS_ROOT/Stable-diffusion"
     rm -rf "$MODELS_ROOT/Codeformer" && ln -s "$CODEFORMER_DIR" "$MODELS_ROOT/Codeformer"
     rm -rf "$MODELS_ROOT/GFPGAN" && ln -s "$GFPGAN_DIR" "$MODELS_ROOT/GFPGAN"
+    rm -rf "$MODELS_ROOT/adetailer" && ln -s "$ADETAILER_MODEL_DIR" "$MODELS_ROOT/adetailer"
+    rm -rf "$MODELS_ROOT/VAE" && ln -s "$VOLUME_PATH/models/VAE" "$MODELS_ROOT/VAE"
 
     echo "Model synchronization complete."
 else
@@ -71,6 +95,17 @@ python /stable-diffusion-webui/webui.py \
   --skip-version-check \
   --no-hashing \
   --no-download-sd-model &
+
+# WebUIが起動するまで少し待つ（APIが反応するまでループ）
+echo "Waiting for WebUI API to be ready..."
+until curl -s http://localhost:3000/sdapi/v1/sd-vae > /dev/null; do
+    echo "Waiting for WebUI API..."
+    sleep 2
+done
+
+# 登録されているVAEの一覧を取得してログに出力
+echo "Listing available VAEs:"
+curl -s http://localhost:3000/sdapi/v1/sd-vae | jq -r '.[].model_name'
 
 echo "Starting RunPod Handler"
 python -u /handler.py
