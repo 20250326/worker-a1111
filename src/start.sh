@@ -68,9 +68,9 @@ if [ -d "$VOLUME_PATH" ]; then
         echo "Installing ADetailer extension (Git Clone)..."
         git clone https://github.com/Bing-su/adetailer.git "$ADETAILER_EXT_DIR"
         
-        # ★ ここが重要！足りないライブラリをインストールする ★
+        # ★ ここに ultralytics を追加！ ★
         echo "Installing requirements for ADetailer..."
-        pip install rich
+        pip install rich ultralytics
     else
         echo "ADetailer extension already exists."
     fi
