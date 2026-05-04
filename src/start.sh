@@ -57,7 +57,22 @@ if [ -d "$VOLUME_PATH" ]; then
     # VAE
     if [ ! -f "$VAE_DEST" ]; then
         echo "Downloading VAE to Volume..."
-        wget -q -O "$VAE_DEST" "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+        wget -q -O "$VAE_DEST" "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors"
+    fi
+
+    # --- ADetailer 拡張機能本体のインストール ---
+    EXTENSIONS_ROOT="/stable-diffusion-webui/extensions"
+    ADETAILER_EXT_DIR="$EXTENSIONS_ROOT/adetailer"
+
+    if [ ! -d "$ADETAILER_EXT_DIR" ]; then
+        echo "Installing ADetailer extension (Git Clone)..."
+        git clone https://github.com/Bing-su/adetailer.git "$ADETAILER_EXT_DIR"
+        
+        # ★ ここが重要！足りないライブラリをインストールする ★
+        echo "Installing requirements for ADetailer..."
+        pip install rich
+    else
+        echo "ADetailer extension already exists."
     fi
 
     # --- 3. シンボリックリンクの構築 ---
@@ -106,6 +121,21 @@ done
 # 登録されているVAEの一覧を取得してログに出力
 echo "Listing available VAEs:"
 curl -s http://localhost:3000/sdapi/v1/sd-vae | jq -r '.[].model_name'
+
+# --- デバッグ用：ADetailerがAPIに認識されているか確認 ---
+echo "Checking ADetailer API status..."
+# 1. 拡張機能の一覧を取得
+SCRIPTS=$(curl -s http://localhost:3000/sdapi/v1/scripts)
+if echo "$SCRIPTS" | grep -iq "adetailer"; then
+    echo "SUCCESS: ADetailer extension is detected by WebUI."
+else
+    echo "ERROR: ADetailer extension NOT found in scripts list!"
+    echo "Available scripts: $SCRIPTS"
+fi
+
+# 2. モデルファイルがWebUIから見える場所にあるか再確認
+echo "Physical model check:"
+ls -lh /stable-diffusion-webui/models/adetailer/face_yolov8n.pt
 
 echo "Starting RunPod Handler"
 python -u /handler.py
