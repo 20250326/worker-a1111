@@ -12,6 +12,9 @@ CODEFORMER_DIR="$VOLUME_PATH/models/Codeformer"
 GFPGAN_DIR="$VOLUME_PATH/models/GFPGAN"
 ADETAILER_MODEL_DIR="$VOLUME_PATH/models/adetailer"
 VAE_DEST="$VOLUME_PATH/models/VAE/vae-ft-mse-840000-ema-pruned.safetensors"
+CONTROLNET_MODEL_DIR="$VOLUME_PATH/models/ControlNet"
+OP_MODEL_DEST="$CONTROLNET_MODEL_DIR/control_v11p_sd15_openpose.pth"
+OP_YAML_DEST="$CONTROLNET_MODEL_DIR/control_v11p_sd15_openpose.yaml"
 
 # curl が入っていなければインストールする
 if ! command -v curl &> /dev/null; then
@@ -28,6 +31,7 @@ if [ -d "$VOLUME_PATH" ]; then
     mkdir -p "$GFPGAN_DIR"
     mkdir -p "$ADETAILER_MODEL_DIR"
     mkdir -p "$VOLUME_PATH/models/VAE"
+    mkdir -p "$CONTROLNET_MODEL_DIR"
 
     # --- 2. 存在チェック & ダウンロード（初回のみ） ---
     # メインモデル
@@ -60,6 +64,13 @@ if [ -d "$VOLUME_PATH" ]; then
         wget -q -O "$VAE_DEST" "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors"
     fi
 
+    # ControlNet
+    if [ ! -d "$CONTROLNET_MODEL_DIR" ]; then
+        echo "Downloading OpenPose model to Volume..."
+        wget -q -O "$OP_MODEL_DEST" "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11p_sd15_openpose.pth"
+        wget -q -O "$OP_YAML_DEST" "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11p_sd15_openpose.yaml"
+    fi
+
     # --- ADetailer 拡張機能本体のインストール ---
     EXTENSIONS_ROOT="/stable-diffusion-webui/extensions"
     ADETAILER_EXT_DIR="$EXTENSIONS_ROOT/adetailer"
@@ -74,6 +85,20 @@ if [ -d "$VOLUME_PATH" ]; then
     else
         echo "ADetailer extension already exists."
     fi
+    
+    # --- ControlNet 拡張機能本体のインストール ---
+    CONTROLNET_EXT_DIR="$EXTENSIONS_ROOT/sd-webui-controlnet"
+
+    if [ ! -d "$CONTROLNET_EXT_DIR" ]; then
+        echo "Installing ControlNet extension (Git Clone)..."
+        git clone https://github.com/Mikubill/sd-webui-controlnet.git "$CONTROLNET_EXT_DIR"
+        
+        # ★ ここが重要！依存関係をインストールする ★
+        echo "Installing requirements for ControlNet..."
+        pip install controlnet_aux==0.0.7  # バージョン指定しておくと安定するわ
+    else
+        echo "ControlNet extension already exists."
+    fi
 
     # --- 3. シンボリックリンクの構築 ---
     # イメージ側のデフォルトディレクトリを消して、ボリュームへ繋ぐ
@@ -82,7 +107,7 @@ if [ -d "$VOLUME_PATH" ]; then
     rm -rf "$MODELS_ROOT/GFPGAN" && ln -s "$GFPGAN_DIR" "$MODELS_ROOT/GFPGAN"
     rm -rf "$MODELS_ROOT/adetailer" && ln -s "$ADETAILER_MODEL_DIR" "$MODELS_ROOT/adetailer"
     rm -rf "$MODELS_ROOT/VAE" && ln -s "$VOLUME_PATH/models/VAE" "$MODELS_ROOT/VAE"
-
+    rm -rf "$MODELS_ROOT/ControlNet" && ln -s "$VOLUME_PATH/models/ControlNet" "$MODELS_ROOT/ControlNet"
     echo "Model synchronization complete."
 else
     echo "Error: Network Volume not found at $VOLUME_PATH."
@@ -121,6 +146,16 @@ done
 # 登録されているVAEの一覧を取得してログに出力
 echo "Listing available VAEs:"
 curl -s http://localhost:3000/sdapi/v1/sd-vae | jq -r '.[].model_name'
+
+# --- ControlNetのモデル一覧を確認 ---
+echo "Checking available ControlNet models:"
+CN_MODELS=$(curl -s http://localhost:3000/controlnet/model_list)
+if [ -z "$CN_MODELS" ] || [ "$CN_MODELS" == '{"detail":"Not Found"}' ]; then
+    echo "ERROR: ControlNet API endpoint not found. Is the extension installed?"
+else
+    echo "Available ControlNet models:"
+    echo "$CN_MODELS" | jq -r '.model_list[]'
+fi
 
 # --- デバッグ用：ADetailerがAPIに認識されているか確認 ---
 echo "Checking ADetailer API status..."
