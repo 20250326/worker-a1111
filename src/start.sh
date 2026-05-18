@@ -15,6 +15,7 @@ VAE_DEST="$VOLUME_PATH/models/VAE/vae-ft-mse-840000-ema-pruned.safetensors"
 CONTROLNET_MODEL_DIR="$VOLUME_PATH/models/ControlNet"
 OP_MODEL_DEST="$CONTROLNET_MODEL_DIR/control_v11p_sd15_openpose.pth"
 OP_YAML_DEST="$CONTROLNET_MODEL_DIR/control_v11p_sd15_openpose.yaml"
+LORA_MODEL_DIR="$VOLUME_PATH/models/Lora"
 
 # curl が入っていなければインストールする
 if ! command -v curl &> /dev/null; then
@@ -32,6 +33,7 @@ if [ -d "$VOLUME_PATH" ]; then
     mkdir -p "$ADETAILER_MODEL_DIR"
     mkdir -p "$VOLUME_PATH/models/VAE"
     mkdir -p "$CONTROLNET_MODEL_DIR"
+    mkdir -p "$LORA_MODEL_DIR"
 
     # --- 2. 存在チェック & ダウンロード（初回のみ） ---
     # メインモデル
@@ -79,7 +81,6 @@ if [ -d "$VOLUME_PATH" ]; then
         echo "Installing ADetailer extension (Git Clone)..."
         git clone https://github.com/Bing-su/adetailer.git "$ADETAILER_EXT_DIR"
         
-        # ★ ここに ultralytics を追加！ ★
         echo "Installing requirements for ADetailer..."
         pip install rich ultralytics
     else
@@ -93,21 +94,20 @@ if [ -d "$VOLUME_PATH" ]; then
         echo "Installing ControlNet extension (Git Clone)..."
         git clone https://github.com/Mikubill/sd-webui-controlnet.git "$CONTROLNET_EXT_DIR"
         
-        # ★ ここが重要！依存関係をインストールする ★
         echo "Installing requirements for ControlNet..."
-        pip install controlnet_aux==0.0.7  # バージョン指定しておくと安定するわ
+        pip install controlnet_aux==0.0.7
     else
         echo "ControlNet extension already exists."
     fi
 
     # --- 3. シンボリックリンクの構築 ---
-    # イメージ側のデフォルトディレクトリを消して、ボリュームへ繋ぐ
     rm -rf "$MODELS_ROOT/Stable-diffusion" && ln -s "$VOLUME_PATH/models/Stable-diffusion" "$MODELS_ROOT/Stable-diffusion"
     rm -rf "$MODELS_ROOT/Codeformer" && ln -s "$CODEFORMER_DIR" "$MODELS_ROOT/Codeformer"
     rm -rf "$MODELS_ROOT/GFPGAN" && ln -s "$GFPGAN_DIR" "$MODELS_ROOT/GFPGAN"
     rm -rf "$MODELS_ROOT/adetailer" && ln -s "$ADETAILER_MODEL_DIR" "$MODELS_ROOT/adetailer"
     rm -rf "$MODELS_ROOT/VAE" && ln -s "$VOLUME_PATH/models/VAE" "$MODELS_ROOT/VAE"
     rm -rf "$MODELS_ROOT/ControlNet" && ln -s "$VOLUME_PATH/models/ControlNet" "$MODELS_ROOT/ControlNet"
+    rm -rf "$MODELS_ROOT/Lora" && ln -s "$LORA_MODEL_DIR" "$MODELS_ROOT/Lora"
     echo "Model synchronization complete."
 else
     echo "Error: Network Volume not found at $VOLUME_PATH."
@@ -159,7 +159,6 @@ fi
 
 # --- デバッグ用：ADetailerがAPIに認識されているか確認 ---
 echo "Checking ADetailer API status..."
-# 1. 拡張機能の一覧を取得
 SCRIPTS=$(curl -s http://localhost:3000/sdapi/v1/scripts)
 if echo "$SCRIPTS" | grep -iq "adetailer"; then
     echo "SUCCESS: ADetailer extension is detected by WebUI."
@@ -171,6 +170,10 @@ fi
 # 2. モデルファイルがWebUIから見える場所にあるか再確認
 echo "Physical model check:"
 ls -lh /stable-diffusion-webui/models/adetailer/face_yolov8n.pt
+
+# --- デバッグ用：LoRA用ディレクトリの確認 ★ LoRA追加 ★ ---
+echo "Checking LoRA directory status:"
+ls -lh "$MODELS_ROOT/Lora"
 
 echo "Starting RunPod Handler"
 python -u /handler.py
